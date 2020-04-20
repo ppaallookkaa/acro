@@ -15,11 +15,8 @@ import json
 from datetime import datetime
 import requests
 
-SCORE_FILE = "/home/sopel/.sopel/scores.acro"
-LETTER_FILE = "/home/sopel/.sopel/letters.acro"
-CUSTOM_ACRO_FILE = "/home/sopel/.sopel/custom.acro"
-TEMP_CHANNEL = "#acrogame" # visit us - #acrogame @ EFNet
 INSULTS = ['idiot', 'dummy', 'jerk', 'retard'] # what to call people when they don't vote
+LETTERS = 'xzqqjjjyyyyvvvvkkkkuuuuuggggggnnnnnnnllllllleeeeeeeerrrrrrrrdddddddddmmmmmmmmmmffffffffffhhhhhhhhhhhpppppppppppbbbbbbbbbbbccccccccccccwwwwwwwwwwwwwssssssssssssssiiiiiiiiiiiiiiiooooooooooooooooaaaaaaaaaaaaaaaaatttttttttttttttttt' # TODO: store the letters in sopel db and make the odds of each letter adjustable via irc
 
 class AcroGame:
     def __init__(self, trigger):
@@ -44,30 +41,16 @@ class AcroGame:
         self.countAcros = 1
         self.submittedAcros = {}
         self.voteCount = 0
+        self.letters = []
 
-        if random.randint(0,9) == 0:
-            # grab a custom acro!
-            customAcros = []
-            try:
-                with open(CUSTOM_ACRO_FILE, 'r') as f:
-                    filecontents = f.readlines()
-                    for line in filecontents:
-                        current_line = line[:-1]
-                        customAcros.append(current_line)
-            except IOError:
-                    customAcros = ['ACRO', 'GAME'] # backup acros if custom file isn't there
+        if random.randint(0,10) == 0:
+            customAcros = bot.db.get_plugin_value('acro', 'custom_acros', ['ACRO', 'GAME'])
             customAcro = random.choice(customAcros).lower()
             for letter in customAcro:
                 self.currentAcro.append(letter)
         else:
-            # generate acro instead
-            with open(LETTER_FILE) as fp:
-                for cnt, line in enumerate(fp):
-                    letter = line.split()
-                    amount = int(letter[1].strip())
-                    char = letter[0].strip()
-                    for _ in range(amount):
-                        self.letters.append(char)
+            for char in LETTERS:
+                self.letters.append(char)
 
             if(random.randint(0,5)) == 0: 
                 max_length = 6
@@ -85,6 +68,8 @@ class AcroGame:
     def submitAcro(self, bot, trigger):
         if self.gameMode is not 'SUBMITTING':
             return
+        if len(self.submittedAcros) >= 9:
+            return bot.notice(f"We already have 9 acros for this round, which is the limit. Try to submit faster next round!")
 
         submittedAcro = trigger.group(0)
         words = submittedAcro.split()
@@ -104,7 +89,7 @@ class AcroGame:
         self.submittedAcros[str(trigger.sender)] = {}
         self.submittedAcros[str(trigger.sender)].update({'acroID': self.countAcros, 'username': str(trigger.sender), 'acro': submittedAcro})
         self.submittedAcros[str(trigger.sender)]['votes'] = []
-        bot.say(f"Acro #{self.countAcros} has been submitted!", TEMP_CHANNEL)
+        bot.say(f"Acro #{self.countAcros} has been submitted!", self.channel)
         self.countAcros += 1
         return bot.notice(f"Your acro for this round has been recorded! {bold(submittedAcro)}")
 
@@ -157,7 +142,7 @@ class AcroGame:
                 self.submittedAcros[username]['votes'].append(str(trigger.sender))
         self.voteCount += 1
         self.voterLog.append(str(trigger.sender))
-        bot.say(f"Vote #{self.voteCount} has been submitted!", TEMP_CHANNEL)
+        bot.say(f"Vote #{self.voteCount} has been submitted!", self.channel)
         return bot.notice(f"You have voted for acro #{votedFor}", trigger.sender)
 
     def addPoints(self, username, amount):
@@ -238,30 +223,25 @@ class AcroGame:
         if len(winners) != 0:
             if len(winners) > 1:
                 for winner in winners:
-                    self.addWin(winner)
+                    self.addWin(bot, winner)
                 bot.say(bold(f"{', '.join(winners)} all have {self.scoreNeeded} or more points and tie for the win!"))
             elif len(winners) == 1:
                 winner = winners.pop()
-                self.addWin(winner)
+                self.addWin(bot, winner)
                 bot.say(bold(f"{winner} has won the game! ALL GLORY GOES TO YOU!!!"))
 
             self.active = False
             return False
 
-    def addWin(self, winner):
-        try:
-            with open(SCORE_FILE, 'r') as f:
-                highScores = json.load(f)
-        except IOError:
-                highScores = {}
+    def addWin(self, bot, winner):
+        highScores = bot.db.get_plugin_value('acro', 'scores', {})
 
         if winner not in highScores:
             highScores[winner] = 1
         else:
             highScores[winner] += 1
 
-        with open(SCORE_FILE, 'w') as f:
-            json.dump(highScores, f)
+        bot.db.set_plugin_value('acro', 'scores', highScores)
 
         return highScores[winner]
     
@@ -276,11 +256,8 @@ class AcroBot:
         self.games = {}
 
     def start(self, bot, trigger):
-        if trigger.sender in self.games:
-            bot.say(f"We're already playing acro!")
-            return
-        if trigger.sender != TEMP_CHANNEL:
-            bot.say(f"I don't like hosting acro games here")
+        if len(self.games) > 0:
+            bot.say(f"I'm already hosting an acro game!")
             return
 
         bot.notice(f"New acro game started by {trigger.nick}! Have fun and good luck!", trigger.sender)
@@ -314,22 +291,20 @@ class AcroBot:
     def submitAcro(self, bot, trigger):
         if not self.games:
             return
-        game = self.games[TEMP_CHANNEL] # TODO: write logic to find which channel the user is playing in
+        channel = next(iter(self.games))
+        game = self.games[channel]
         game.submitAcro(bot, trigger)
 
     def voteAcro(self, bot, trigger):
         if not self.games:
             return
-
-        game = self.games[TEMP_CHANNEL] # TODO: write logic to find which channel the user is playing in
+        channel = next(iter(self.games))
+        game = self.games[channel]
         game.voteAcro(bot, trigger)
 
     def highScore(self, bot, trigger):
-        try:
-            with open(SCORE_FILE, 'r') as f:
-                highScores = json.load(f)
-        except IOError:
-                highScores = {}
+        
+        highScores = bot.db.get_plugin_value('acro', 'scores', {})
 
         sortedScores = dict(sorted(highScores.items(), key=operator.itemgetter(1),reverse=True))
         scoreString = bold("GAME WINS: ")
@@ -338,33 +313,23 @@ class AcroBot:
         bot.say(scoreString.rstrip())
 
     def addAcro(self, bot, trigger):
-        if(len(trigger.group(2))) > 6:
-            return bot.say("You can't add custom acros this long")
+        if (len(trigger.group(2)) > 6) or (len(trigger.group(2)) < 3):
+            return bot.say("This custom acro is a bad length. Try again.")
         if(trigger.group(2).isalpha()) == False:
-            return bot.say("The custom acro you're trying to add SUCKS. Try again.")
+            return bot.say("The custom acro you're trying to add is invalid. Try again.")
 
-        customAcros = []
-        try:
-            with open(CUSTOM_ACRO_FILE, 'r') as f:
-                filecontents = f.readlines()
-                for line in filecontents:
-                    current_acro = line[:-1]
-                    customAcros.append(current_acro)
-        except IOError:
-                customAcros = []
+        customAcros = bot.db.get_plugin_value('acro', 'custom_acros', [])
 
         newAcro = trigger.group(2).upper()
         if(newAcro in customAcros):
             return bot.say("This custom acro is already in the game!")
-        customAcros.append(newAcro)
 
-        with open(CUSTOM_ACRO_FILE, 'w') as f:
-            for listitem in customAcros:
-                f.write('%s\n' % listitem)
+        customAcros.append(newAcro)
+        bot.db.set_plugin_value('acro', 'custom_acros', customAcros)
 
         return bot.say(f"Your custom acro {bold(color(newAcro, colors.ORANGE))} has been added to the game!")
 
-    def generateLink(self, bot, trigger):
+    def generateLog(self, bot, trigger):
         if trigger.group(2):
             nick = trigger.group(2)
         else:
@@ -377,13 +342,26 @@ class AcroBot:
         for acro in acros:
             string += f"{acro['date']} - {acro['acro']} - {acro['votes']} votes\n"
 
+        url = self.clbin(string)
+        bot.say(f"Here's a list of acros that {bold(nick)} has submitted: {url} (sponsored by gooch)")
+
+    def generateCustom(self, bot):
+        customAcros = bot.db.get_plugin_value('acro', 'custom_acros', [])
+
+        if not customAcros:
+            return bot.say(f"We don't have any custom acros, make some w/ !addacro")
+
+        url = self.clbin("\n".join(customAcros))
+        bot.say(f"Here's a list of custom acros in the game: {url}")
+
+    def clbin(self, string):
         try:
             r = requests.post('https://clbin.com/', data={'clbin': string})
         except requests.exceptions.RequestException:
             raise
 
-        url = r.content.decode('utf-8').strip()
-        bot.say(f"Here's a list of acros that {bold(nick)} has submitted: {url} (sponsored by gooch)")
+        return r.content.decode('utf-8').strip()
+
 
 acro = AcroBot()
 
@@ -428,7 +406,7 @@ def acroScore(bot, trigger):
 @module.commands('addacro')
 @module.example(".addacro")
 @module.priority('low')
-@module.require_privilege(module.OP, 'You require more minerals.')
+#@module.require_privilege(module.OP, 'You require more minerals.')
 @module.require_chanmsg
 def addacro(bot, trigger):
     """
@@ -444,4 +422,14 @@ def acrolog(bot, trigger):
     """
     View log for a user
     """
-    acro.generateLink(bot, trigger)
+    acro.generateLog(bot, trigger)
+
+@module.commands('acrolist')
+@module.example(".acrolist")
+@module.priority('low')
+@module.require_chanmsg
+def acrocustoms(bot, trigger):
+    """
+    View a list of custom acros in the game
+    """
+    acro.generateCustom(bot)
