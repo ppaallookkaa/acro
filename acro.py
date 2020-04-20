@@ -43,7 +43,7 @@ class AcroGame:
         self.voteCount = 0
         self.letters = []
 
-        if random.randint(0,10) == 0:
+        if random.randint(0,9) == 0:
             customAcros = bot.db.get_plugin_value('acro', 'custom_acros', ['ACRO', 'GAME'])
             customAcro = random.choice(customAcros).lower()
             for letter in customAcro:
@@ -329,6 +329,24 @@ class AcroBot:
 
         return bot.say(f"Your custom acro {bold(color(newAcro, colors.ORANGE))} has been added to the game!")
 
+    def delAcro(self, bot, trigger):
+        if(trigger.group(2).isalpha()) == False:
+            return bot.say("That acro wasn't found")
+            
+        customAcros = bot.db.get_plugin_value('acro', 'custom_acros', [])
+
+        if not customAcros:
+            return bot.say("Can't do that")
+
+        acro = trigger.group(2).upper()
+
+        if acro not in customAcros:
+            return bot.say("That acro wasn't found")
+
+        customAcros.remove(acro)
+        bot.db.set_plugin_value('acro', 'custom_acros', customAcros)
+        return bot.say(f"The acro {bold(color(acro, colors.ORANGE))} was removed")
+
     def generateLog(self, bot, trigger):
         if trigger.group(2):
             nick = trigger.group(2)
@@ -406,13 +424,24 @@ def acroScore(bot, trigger):
 @module.commands('addacro')
 @module.example(".addacro")
 @module.priority('low')
-#@module.require_privilege(module.OP, 'You require more minerals.')
+@module.require_privilege(module.OP, 'You require more minerals.')
 @module.require_chanmsg
 def addacro(bot, trigger):
     """
     Add a custom acro
     """
     acro.addAcro(bot, trigger)
+
+@module.commands('delacro')
+@module.example(".delacro")
+@module.priority('low')
+@module.require_privilege(module.OWNER, 'You require more minerals.')
+@module.require_chanmsg
+def delacro(bot, trigger):
+    """
+    Delete a custom acro
+    """
+    acro.delAcro(bot, trigger)
 
 @module.commands('acrolog')
 @module.example(".acrolog")
@@ -433,3 +462,4 @@ def acrocustoms(bot, trigger):
     View a list of custom acros in the game
     """
     acro.generateCustom(bot)
+
