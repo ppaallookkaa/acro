@@ -18,5 +18,6 @@ Have fun and happy acro'ing!
 | !acroscores | Show the high scores for acro |
 | !addacro \<ACRO> | Add a custom acro to the game |
 | !acrolog \<USER> | View a list of acros that \<USER> has submitted |
+| !acrolist | View a list of the custom acros available in the game |
 
 
