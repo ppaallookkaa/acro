@@ -12,6 +12,8 @@ import random
 import time
 import operator
 import json
+from datetime import datetime
+import requests
 
 SCORE_FILE = "/home/sopel/.sopel/scores.acro"
 LETTER_FILE = "/home/sopel/.sopel/letters.acro"
@@ -44,6 +46,7 @@ class AcroGame:
         self.voteCount = 0
 
         if random.randint(0,9) == 0:
+            # grab a custom acro!
             customAcros = []
             try:
                 with open(CUSTOM_ACRO_FILE, 'r') as f:
@@ -52,11 +55,12 @@ class AcroGame:
                         current_line = line[:-1]
                         customAcros.append(current_line)
             except IOError:
-                    customAcros = ['ACRO', 'GAME']
+                    customAcros = ['ACRO', 'GAME'] # backup acros if custom file isn't there
             customAcro = random.choice(customAcros).lower()
             for letter in customAcro:
                 self.currentAcro.append(letter)
         else:
+            # generate acro instead
             with open(LETTER_FILE) as fp:
                 for cnt, line in enumerate(fp):
                     letter = line.split()
@@ -178,6 +182,7 @@ class AcroGame:
             acro = info['acro']
             voterList.extend(info['votes'])
             voteCount = len(info['votes'])
+            self.logAcro(bot, username, acro, voteCount)
             if voteCount >= highestVotes:
                 highestVotes = voteCount
                 candidates[username] = voteCount
@@ -259,6 +264,12 @@ class AcroGame:
             json.dump(highScores, f)
 
         return highScores[winner]
+    
+    def logAcro(self, bot, nick, acro, voteCount):
+        acros = bot.db.get_nick_value(nick, 'acros', [])
+        logData = {"date": datetime.now().strftime("%m/%d/%Y"), "acro": acro, "votes": voteCount}
+        acros.append(logData)
+        bot.db.set_nick_value(nick, 'acros', acros)
 
 class AcroBot:
     def __init__(self):
@@ -344,7 +355,7 @@ class AcroBot:
 
         newAcro = trigger.group(2).upper()
         if(newAcro in customAcros):
-            return bot.say("This custom already is already in the game!")
+            return bot.say("This custom acro is already in the game!")
         customAcros.append(newAcro)
 
         with open(CUSTOM_ACRO_FILE, 'w') as f:
@@ -353,7 +364,26 @@ class AcroBot:
 
         return bot.say(f"Your custom acro {bold(color(newAcro, colors.ORANGE))} has been added to the game!")
 
-        
+    def generateLink(self, bot, trigger):
+        if trigger.group(2):
+            nick = trigger.group(2)
+        else:
+            nick = trigger.nick
+
+        acros = bot.db.get_nick_value(nick, 'acros', [])
+        if not acros:
+            return bot.say("This user doesn't have any logged acros")
+        string = f"{nick}'s acro list:\n"
+        for acro in acros:
+            string += f"{acro['date']} - {acro['acro']} - {acro['votes']} votes\n"
+
+        try:
+            r = requests.post('https://clbin.com/', data={'clbin': string})
+        except requests.exceptions.RequestException:
+            raise
+
+        url = r.content.decode('utf-8').strip()
+        bot.say(f"Here's a list of acros that {bold(nick)} has submitted: {url} (sponsored by gooch)")
 
 acro = AcroBot()
 
@@ -398,7 +428,7 @@ def acroScore(bot, trigger):
 @module.commands('addacro')
 @module.example(".addacro")
 @module.priority('low')
-@module.require_privilege(module.OP, 'You need to be an op to add custom acros.')
+@module.require_privilege(module.OP, 'You require more minerals.')
 @module.require_chanmsg
 def addacro(bot, trigger):
     """
@@ -406,3 +436,12 @@ def addacro(bot, trigger):
     """
     acro.addAcro(bot, trigger)
 
+@module.commands('acrolog')
+@module.example(".acrolog")
+@module.priority('low')
+@module.require_chanmsg
+def acrolog(bot, trigger):
+    """
+    View log for a user
+    """
+    acro.generateLink(bot, trigger)
