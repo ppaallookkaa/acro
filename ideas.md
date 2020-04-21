@@ -1,4 +1,5 @@
 - [ ] add [easy, medium, hard] difficulty levels to determine odds of length of acros
 - [x] record every users acro and display them on a website
-- [ ] high scores for each month
+- [ ] high score reporting segmented by time period (week/month/etc)
 - [x] command to add custom acros, % chance that one is played
+- [ ] display acros with the highest votes segmented by time period (week/month/year/alltime/etc)

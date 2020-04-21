@@ -15,9 +15,6 @@ import json
 from datetime import datetime
 import requests
 
-INSULTS = ['idiot', 'dummy', 'jerk', 'retard'] # what to call people when they don't vote
-LETTERS = 'xzqqjjjyyyyvvvvkkkkuuuuuggggggnnnnnnnllllllleeeeeeeerrrrrrrrdddddddddmmmmmmmmmmffffffffffhhhhhhhhhhhpppppppppppbbbbbbbbbbbccccccccccccwwwwwwwwwwwwwssssssssssssssiiiiiiiiiiiiiiiooooooooooooooooaaaaaaaaaaaaaaaaatttttttttttttttttt' # TODO: store the letters in sopel db and make the odds of each letter adjustable via irc
-
 class AcroGame:
     def __init__(self, trigger):
         self.owner = trigger.nick
@@ -42,14 +39,21 @@ class AcroGame:
         self.submittedAcros = {}
         self.voteCount = 0
         self.letters = []
-
-        if random.randint(0,9) == 0:
+        
+        if random.randint(1,100) <= bot.db.get_plugin_value('acro', 'custom_chance', 10):
             customAcros = bot.db.get_plugin_value('acro', 'custom_acros', ['ACRO', 'GAME'])
             customAcro = random.choice(customAcros).lower()
             for letter in customAcro:
                 self.currentAcro.append(letter)
         else:
-            for char in LETTERS:
+            # check if we have letters in db, if not, import them
+            letterPool = bot.db.get_plugin_value('acro', 'letters', [])
+            if not letterPool:
+                for char in 'xzqqjjjyyyyvvvvkkkkuuuuuggggggnnnnnnnllllllleeeeeeeerrrrrrrrdddddddddmmmmmmmmmmffffffffffhhhhhhhhhhhpppppppppppbbbbbbbbbbbccccccccccccwwwwwwwwwwwwwssssssssssssssiiiiiiiiiiiiiiiooooooooooooooooaaaaaaaaaaaaaaaaatttttttttttttttttt':
+                    letterPool.append(char)
+                    bot.db.set_plugin_value('acro', 'letters', letterPool)
+
+            for char in letterPool:
                 self.letters.append(char)
 
             if(random.randint(0,5)) == 0: 
@@ -190,7 +194,7 @@ class AcroGame:
         
         if len(assholes) > 0 and winningScore > 0:
             for asshole in assholes:
-                bot.say(bold(color(f"{asshole} should have won, but they didn't vote. Please refrain from being a {random.choice(INSULTS)} in the future, thanks.", colors.RED)))
+                bot.say(bold(color(f"{asshole} should have won, but they didn't vote. Please refrain from being a {random.choice(['idiot', 'dummy', 'jerk'])} in the future, thanks.", colors.RED)))
         if len(winners) == 0:
             winString = bold(color("Nobody won any points this round. If you don't vote you don't win! VOTE!!!", colors.RED))
         elif len(winners) == 1:
@@ -332,14 +336,10 @@ class AcroBot:
     def delAcro(self, bot, trigger):
         if(trigger.group(2).isalpha()) == False:
             return bot.say("That acro wasn't found")
-            
         customAcros = bot.db.get_plugin_value('acro', 'custom_acros', [])
-
         if not customAcros:
             return bot.say("Can't do that")
-
         acro = trigger.group(2).upper()
-
         if acro not in customAcros:
             return bot.say("That acro wasn't found")
 
@@ -380,6 +380,91 @@ class AcroBot:
 
         return r.content.decode('utf-8').strip()
 
+    def adjustScore(self, bot, trigger):
+        params = trigger.group(2).split()
+        username = params[0]
+        if params[1].isdigit() == False:
+            return bot.say("Invalid score. Please do !acrochangescore <user> #")
+        score = int(params[1])
+        highScores = bot.db.get_plugin_value('acro', 'scores', {})
+
+        if username.isalnum() == False or len(username) > 9:
+            return bot.say("Invalid user name. Please try again")  
+
+        if username in highScores:
+            oldScore = highScores[username]
+        else:
+            oldScore = 0
+
+        if score == 0:
+            del highScores[username]
+        else:
+            highScores[username] = score
+        bot.db.set_plugin_value('acro', 'scores', highScores)
+
+        return bot.say(f"{username}'s game wins have been adjusted from {oldScore} to {score}")
+
+    def viewLetters(self, bot, trigger):
+        if trigger.group(2):
+            # individual letter count
+            letter = trigger.group(2).lower()
+            if letter.isalpha() == False or len(letter) > 1:
+                return bot.say("Invalid letter check. !acroletters <LETTER> (parameter is optional)")
+            
+            letters = bot.db.get_plugin_value('acro', 'letters', [])
+            count = letters.count(letter)
+            return bot.say(f"The letter {letter.upper()} occurs {count} times")
+
+        else:
+            # all letter count
+            letters = bot.db.get_plugin_value('acro', 'letters', [])
+            uniqueLetters = set(letters)
+            string = bold('LETTER PROBABILITIES: ')
+            for uniqueLetter in uniqueLetters:
+                count = letters.count(uniqueLetter)
+                string += f"{bold(color(uniqueLetter.upper(), colors.BLUE))}: {color(str(count), colors.GREEN)} "
+
+            return bot.say(string)
+
+    def adjustLetter(self, bot, trigger):
+        params = trigger.group(2).split()
+        if len(params) < 2:
+            return bot.say("Invalid parameters. Please do !acroadjust <letter> #")
+        if params[1].isdigit() == False:
+            return bot.say("Invalid parameters. Please do !acroadjust <letter> #")
+        letter = params[0].lower()
+        if letter.isalpha() == False or len(letter) > 1:
+                return bot.say("Please enter a valid letter to change. !acroadjust <letter> #")
+        count = int(params[1])
+
+        if count > 100:
+            return bot.say("Why would you want more than 100 of the same letter?")
+
+        letters = bot.db.get_plugin_value('acro', 'letters', [])
+        oldCount = letters.count(letter)
+
+        letters = list(filter((letter).__ne__, letters))
+
+        for _ in range(count):
+            letters.append(letter)
+
+        bot.db.set_plugin_value('acro', 'letters', letters)
+        return bot.say(f"Changed occurences of letter {letter.upper()} from {oldCount} to {count}!")
+
+    def setCustomChance(self, bot, trigger):
+        if trigger.group(2) == False:
+            return bot.say("Bad value. Please use a percentage value between 1-100. e.g. !acrocustom 10")
+        if trigger.group(2).isdigit() == False:
+            return bot.say("Bad value. Please use a percentage value between 1-100. e.g. !acrocustom 10")
+        chance = int(trigger.group(2))
+        if chance > 100 or chance < 0:
+            return bot.say("Bad value. Please use a percentage value between 1-100. e.g. !acrocustom 10")
+        oldChance = bot.db.get_plugin_value('acro', 'custom_chance', 10)
+        
+        bot.db.set_plugin_value('acro', 'custom_chance', chance)
+
+        return bot.say(f"Acro game's potential to play a custom acro has changed from {oldChance} to {chance}")
+
 
 acro = AcroBot()
 
@@ -413,7 +498,7 @@ def voteacro(bot, trigger):
 
 @module.commands('acroscores')
 @module.example(".acroscores")
-@module.priority('high')
+@module.priority('low')
 @module.require_chanmsg
 def acroScore(bot, trigger):
     """
@@ -435,7 +520,7 @@ def addacro(bot, trigger):
 @module.commands('delacro')
 @module.example(".delacro")
 @module.priority('low')
-@module.require_privilege(module.OWNER, 'You require more minerals.')
+@module.require_owner('You require more minerals.')
 @module.require_chanmsg
 def delacro(bot, trigger):
     """
@@ -463,3 +548,41 @@ def acrocustoms(bot, trigger):
     """
     acro.generateCustom(bot)
 
+@module.commands('acrochangescore')
+@module.example(".acrochangescore")
+@module.require_owner('You require more minerals.')
+@module.priority('low')
+def changescore(bot, trigger):
+    """
+    Change a users game wins on acro
+    """
+    acro.adjustScore(bot, trigger)
+
+@module.commands('acroletters')
+@module.example(".acroletters")
+@module.priority('low')
+def acroletters(bot, trigger):
+    """
+    View the probability of letters
+    """
+    acro.viewLetters(bot, trigger)
+
+@module.commands('acroadjust')
+@module.example(".acroadjust")
+@module.priority('low')
+@module.require_privilege(module.OP, 'You require more minerals.')
+def acroadjust(bot, trigger):
+    """
+    Adjust the probability of letters
+    """
+    acro.adjustLetter(bot, trigger)
+
+@module.commands('acrocustom')
+@module.example(".acrocustom")
+@module.priority('low')
+@module.require_privilege(module.OP, 'You require more minerals.')
+def acrocustom(bot, trigger):
+    """
+    Adjust the probability of letters
+    """
+    acro.setCustomChance(bot, trigger)
