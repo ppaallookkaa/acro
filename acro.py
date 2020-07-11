@@ -15,6 +15,14 @@ import json
 from datetime import datetime
 import requests
 
+def setup(bot):
+    # check if we have letters in db, if not, import them
+    letterPool = bot.db.get_plugin_value('acro', 'letters', [])
+    if not letterPool:
+        for char in 'xzqqjjjyyyyvvvvkkkkuuuuuggggggnnnnnnnllllllleeeeeeeerrrrrrrrdddddddddmmmmmmmmmmffffffffffhhhhhhhhhhhpppppppppppbbbbbbbbbbbccccccccccccwwwwwwwwwwwwwssssssssssssssiiiiiiiiiiiiiiiooooooooooooooooaaaaaaaaaaaaaaaaatttttttttttttttttt':
+            letterPool.append(char)
+            bot.db.set_plugin_value('acro', 'letters', letterPool)
+
 class AcroGame:
     def __init__(self, trigger):
         self.owner = trigger.nick
@@ -46,12 +54,7 @@ class AcroGame:
             for letter in customAcro:
                 self.currentAcro.append(letter)
         else:
-            # check if we have letters in db, if not, import them
-            letterPool = bot.db.get_plugin_value('acro', 'letters', [])
-            if not letterPool:
-                for char in 'xzqqjjjyyyyvvvvkkkkuuuuuggggggnnnnnnnllllllleeeeeeeerrrrrrrrdddddddddmmmmmmmmmmffffffffffhhhhhhhhhhhpppppppppppbbbbbbbbbbbccccccccccccwwwwwwwwwwwwwssssssssssssssiiiiiiiiiiiiiiiooooooooooooooooaaaaaaaaaaaaaaaaatttttttttttttttttt':
-                    letterPool.append(char)
-                    bot.db.set_plugin_value('acro', 'letters', letterPool)
+            letterPool = bot.db.get_plugin_value('acro', 'letters')
 
             for char in letterPool:
                 self.letters.append(char)
@@ -73,7 +76,7 @@ class AcroGame:
         if self.gameMode is not 'SUBMITTING':
             return
         if len(self.submittedAcros) >= 9:
-            return bot.notice(f"We already have 9 acros for this round, which is the limit. Try to submit faster next round!")
+            return bot.notice("We already have 9 acros for this round, which is the limit. Try to submit faster next round!")
 
         submittedAcro = trigger.group(0)
         words = submittedAcro.split()
@@ -110,7 +113,7 @@ class AcroGame:
         self.badRounds = 0
         self.voterLog = []
 
-        bot.say(f"Ok, Acro submission time is over. Its time to VOTE:")
+        bot.say("Ok, Acro submission time is over. Its time to VOTE:")
         for username, info in self.submittedAcros.items():
             acroID = bold(color(str(info['acroID']), colors.RED))
             acro = color(' ' + info['acro'] + ' ', colors.ORANGE, colors.BLACK)
@@ -135,14 +138,14 @@ class AcroGame:
             bot.notice(f"You didn't submit an acro, you can't vote!", trigger.sender)
             return
         if str(trigger.sender) in self.voterLog:
-            return bot.notice(f"You already voted. Chill out!", trigger.sender)
+            return bot.notice("You already voted. Chill out!", trigger.sender)
 
         votedFor = int(trigger.group(0))
         for username, info in self.submittedAcros.items():
             acroID = info['acroID']
             if votedFor == acroID:
                 if username == trigger.sender:
-                    return bot.notice(f"You can't vote for your own acro!")
+                    return bot.notice("You can't vote for your own acro!")
                 self.submittedAcros[username]['votes'].append(str(trigger.sender))
         self.voteCount += 1
         self.voterLog.append(str(trigger.sender))
@@ -160,7 +163,7 @@ class AcroGame:
             return
 
         if self.voteCount < 1:
-            bot.say(f"No votes were submitted. Stopping the game now.")
+            bot.say("No votes were submitted. Stopping the game now.")
             self.active = False
             return False
 
@@ -261,7 +264,7 @@ class AcroBot:
 
     def start(self, bot, trigger):
         if len(self.games) > 0:
-            bot.say(f"I'm already hosting an acro game!")
+            bot.say("I'm already hosting an acro game!")
             return
 
         bot.notice(f"New acro game started by {trigger.nick}! Have fun and good luck!", trigger.sender)
@@ -277,10 +280,10 @@ class AcroBot:
             bot.say(f"Points needed to win this game: {game.scoreNeeded}")
             bot.say(f"Submit an acro by messaging me. {instructions} is how you do it!")
             time.sleep(2)
-            bot.say(f"You have 60 seconds to come up with your best acro! GO!")
+            bot.say("You have 60 seconds to come up with your best acro! GO!")
             game.generateAcro(bot, trigger)
             time.sleep(45)
-            bot.say(bold(color(f"HURRY THE FUCK UP! 15 SECONDS LEFT!", colors.RED)))
+            bot.say(bold(color("HURRY THE FUCK UP! 15 SECONDS LEFT!", colors.RED)))
             time.sleep(15)
             game.gameMode = 'PREVOTE'
             if game.displayAcros(bot) == False:
@@ -367,7 +370,7 @@ class AcroBot:
         customAcros = bot.db.get_plugin_value('acro', 'custom_acros', [])
 
         if not customAcros:
-            return bot.say(f"We don't have any custom acros, make some w/ !addacro")
+            return bot.say("We don't have any custom acros, make some w/ !addacro")
 
         url = self.clbin("\n".join(customAcros))
         bot.say(f"Here's a list of custom acros in the game: {url}")
