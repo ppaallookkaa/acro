@@ -1,7 +1,7 @@
 # acro
 An irc game where you create hilarious phrases based on acronyms with your friends!
 
-**If you want to try the game, join us in #acrogame @ EFNet IRC network**
+**If you want to try the game, join us in #h4x @ irc.gamesurge.net**
 
 A simple/fun irc game, where people make phrases (acronyms) with letters which the bot gives you. for example, the bot will start a round w/ an acronym, e.g. 'YEIS', and you'll come up with an acronym, e.g. *Your epidermis is showing*, and submit it privately to the game bot.
 
