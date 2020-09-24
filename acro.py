@@ -481,7 +481,7 @@ def acrostart(bot, trigger):
     """
     acro.start(bot, trigger)
 
-@module.rule("[A-Za-z,;:.-`~'!?'\"\\s]+")
+@module.rule("[A-Za-z,;:.\-`~'!?'\"\\s]+")
 @module.priority('high')
 @module.require_privmsg
 def submitacro(bot, trigger):
